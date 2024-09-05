@@ -151,14 +151,24 @@ app.command("/챌린지시작", async ({ command, ack, say }) => {
   }
 });
 
-app.message("챌린지 수동", async ({ message, say }) => {
+app.command("/챌린지삭제", async ({ command, ack, say }) => {
+  await ack();
+  const currentDate = DateTime.local().setZone("Asia/Seoul");
+  const currentWeek = `Week ${currentDate.weekNumber}`;
+  const collection = db.collection("attendanceRecords");
+
   try {
-    console.log("Daily challenge triggered manually via message.");
-    await startDailyChallenge(); // 수동으로 챌린지 시작
-    await say("수동으로 챌린지를 시작했습니다.");
+    const result = await collection.deleteOne({ week: currentWeek });
+
+    if (result.deletedCount > 0) {
+      delete attendanceRecord[currentWeek];
+      await say("현재 주차의 챌린지 기록이 삭제되었습니다.");
+    } else {
+      await say("삭제할 챌린지 기록이 없습니다.");
+    }
   } catch (error) {
-    console.error("Error during manual challenge start:", error);
-    await say("챌린지를 수동으로 시작하는 중 오류가 발생했습니다.");
+    console.error("Error deleting challenge record:", error);
+    await say("챌린지 기록 삭제 중 오류가 발생했습니다.");
   }
 });
 
