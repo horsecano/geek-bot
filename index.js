@@ -155,11 +155,11 @@ app.command("/챌린지삭제", async ({ command, ack, say }) => {
   await ack();
   const currentDate = DateTime.local().setZone("Asia/Seoul");
   const currentWeek = `Week ${currentDate.weekNumber}`;
-  const collection = db.collection("attendanceRecords");
+  const collection = db.collection("GeekAttendanceRecords");
 
+  console.log("/챌린지삭제 명령어가 트리거되었습니다.");
   try {
     const result = await collection.deleteOne({ week: currentWeek });
-
     if (result.deletedCount > 0) {
       delete attendanceRecord[currentWeek];
       await say("현재 주차의 챌린지 기록이 삭제되었습니다.");
