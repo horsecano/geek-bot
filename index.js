@@ -83,7 +83,15 @@ async function initializeWeekRecord(channelId, botUserId) {
   for (const participant of participants) {
     const userInfo = await app.client.users.info({ user: participant });
     const userName = userInfo.user.real_name;
-    attendanceRecord[currentWeek][userName] = ["❌", "❌", "❌", "❌", "❌"];
+    attendanceRecord[currentWeek][userName] = [
+      "❌",
+      "❌",
+      "❌",
+      "❌",
+      "❌",
+      "🔥",
+      "🔥",
+    ];
   }
 
   await saveAttendanceRecordToDB(currentWeek);
@@ -134,7 +142,7 @@ cron.schedule("1 15 * * *", async () => {
     const channelId = "C07JKNRSK7H";
     const botUserId = "U07KLRELP19";
     await initializeWeekRecord(channelId, botUserId);
-  } else if (currentDate.weekday >= 2 && currentDate.weekday <= 5) {
+  } else {
     await startDailyChallenge();
   }
 });
@@ -214,7 +222,8 @@ app.event("app_mention", async ({ event, say, client }) => {
     const week =
       currentDate.weekNumber - currentDate.startOf("month").weekNumber + 1;
 
-    attendanceRecord[currentWeek][userName][today] = "✅";
+    attendanceRecord[currentWeek][userName][today] =
+      currentDate.weekday === 6 || currentDate.weekday === 7 ? "❇️" : "✅";
 
     // 메시지 업데이트
     let messageText = `${currentDate.month}월 ${week}주차 인증 기록\n`;
