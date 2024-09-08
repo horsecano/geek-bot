@@ -48,8 +48,10 @@ async function loadAttendanceRecordFromDB(week) {
 
   if (record) {
     attendanceRecord[week] = record.records;
+    console.log(`Attendance record for ${week} loaded successfully.`);
   } else {
     attendanceRecord[week] = null;
+    console.log(`No attendance record found for ${week}.`);
   }
 }
 
@@ -94,6 +96,7 @@ async function initializeWeekRecord(channelId, botUserId) {
     ];
   }
 
+  console.log(`Initialized attendance record for ${currentWeek}.`);
   await saveAttendanceRecordToDB(currentWeek);
 }
 
@@ -108,6 +111,11 @@ async function startDailyChallenge() {
     const channelId = "C07JKNRSK7H";
     const botUserId = "U07KLRELP19";
     await initializeWeekRecord(channelId, botUserId);
+  }
+
+  if (!attendanceRecord[currentWeek]) {
+    console.error("Failed to initialize attendance record.");
+    return;
   }
 
   const month = currentDate.month;
