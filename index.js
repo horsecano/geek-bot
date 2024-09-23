@@ -104,15 +104,18 @@ async function startDailyChallenge() {
   const currentDate = DateTime.local().setZone("Asia/Seoul");
   const currentWeek = `Week ${currentDate.weekNumber}`;
 
+  // 출석 기록 불러오기
   await loadAttendanceRecordFromDB(currentWeek);
 
+  // 출석 기록이 없을 경우 초기화
   if (!attendanceRecord[currentWeek]) {
     console.log("No existing attendance record found. Initializing a new one.");
-    const channelId = "C07JKNRSK7H";
-    const botUserId = "U07KLRELP19";
-    await initializeWeekRecord(channelId, botUserId);
+    const channelId = "C07JKNRSK7H"; // 사용하고자 하는 Slack 채널 ID
+    const botUserId = "U07KLRELP19"; // 봇 사용자 ID
+    await initializeWeekRecord(channelId, botUserId); // 주차 기록 초기화
   }
 
+  // 초기화 후에도 출석 기록이 없으면 에러 처리
   if (!attendanceRecord[currentWeek]) {
     console.error("Failed to initialize attendance record.");
     return;
@@ -123,6 +126,7 @@ async function startDailyChallenge() {
     currentDate.weekNumber - currentDate.startOf("month").weekNumber + 1;
   const day = currentDate.setLocale("ko").toFormat("cccc");
 
+  // 메시지 텍스트 구성
   let messageText = `${month}월 ${week}주차 ${day} 인증 기록\n`;
 
   const participants = Object.keys(attendanceRecord[currentWeek]);
@@ -133,11 +137,13 @@ async function startDailyChallenge() {
     ].join("")}\n`;
   });
 
+  // Slack에 메시지 전송
   const result = await app.client.chat.postMessage({
     channel: "C07JKNRSK7H",
     text: messageText,
   });
 
+  // 메시지 타임스탬프 저장
   const messageTs = result.ts;
   await saveMessageTsToDB(currentWeek, messageTs);
 }
