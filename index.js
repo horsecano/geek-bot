@@ -5,7 +5,7 @@ const cron = require("node-cron");
 const { MongoClient } = require("mongodb");
 
 const mongoUri = process.env.MONGO_URI;
-const dbName = "GeekAttendanceDB"; // 새로운 데이터베이스 이름
+const dbName = "GeekAttendanceDB";
 let db;
 
 async function connectToMongoDB() {
@@ -32,7 +32,6 @@ const app = new App({
 
 let attendanceRecord = {};
 
-// Database Operations
 async function saveAttendanceRecordToDB(week) {
   const collection = db.collection("GeekAttendanceRecords");
   await collection.updateOne(
@@ -75,29 +74,35 @@ async function initializeWeekRecord(channelId, botUserId) {
   const currentWeek = `Week ${currentDate.weekNumber}`;
   attendanceRecord[currentWeek] = {};
 
-  const membersResponse = await app.client.conversations.members({
-    token: slackBotToken,
-    channel: channelId,
-  });
+  try {
+    const membersResponse = await app.client.conversations.members({
+      token: slackBotToken,
+      channel: channelId,
+    });
 
-  const participants = membersResponse.members.filter((id) => id !== botUserId);
+    const participants = membersResponse.members.filter(
+      (id) => id !== botUserId
+    );
 
-  for (const participant of participants) {
-    const userInfo = await app.client.users.info({ user: participant });
-    const userName = userInfo.user.real_name;
-    attendanceRecord[currentWeek][userName] = [
-      "❌",
-      "❌",
-      "❌",
-      "❌",
-      "❌",
-      "🔥",
-      "🔥",
-    ];
+    for (const participant of participants) {
+      const userInfo = await app.client.users.info({ user: participant });
+      const userName = userInfo.user.real_name;
+      attendanceRecord[currentWeek][userName] = [
+        "❌",
+        "❌",
+        "❌",
+        "❌",
+        "❌",
+        "🔥",
+        "🔥",
+      ];
+    }
+
+    console.log(`Initialized attendance record for ${currentWeek}.`);
+    await saveAttendanceRecordToDB(currentWeek);
+  } catch (error) {
+    console.error("Error initializing week record:", error);
   }
-
-  console.log(`Initialized attendance record for ${currentWeek}.`);
-  await saveAttendanceRecordToDB(currentWeek);
 }
 
 async function startDailyChallenge() {
@@ -139,7 +144,7 @@ async function startDailyChallenge() {
 
   // Slack에 메시지 전송
   const result = await app.client.chat.postMessage({
-    channel: "C07JKNRSK7H",
+    channel: "C07JKNRSK7H", // 변경된 채널 ID
     text: messageText,
   });
 
@@ -153,8 +158,8 @@ cron.schedule("1 15 * * *", async () => {
   const currentDate = DateTime.local().setZone("Asia/Seoul");
 
   if (currentDate.weekday === 1) {
-    const channelId = "C07JKNRSK7H";
-    const botUserId = "U07KLRELP19";
+    const channelId = "C07JKNRSK7H"; // 사용하고자 하는 Slack 채널 ID
+    const botUserId = "U07KLRELP19"; // 봇 사용자 ID
     await initializeWeekRecord(channelId, botUserId);
   } else {
     await startDailyChallenge();
