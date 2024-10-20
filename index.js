@@ -5,7 +5,7 @@ const cron = require("node-cron");
 const { MongoClient } = require("mongodb");
 
 const mongoUri = process.env.MONGO_URI;
-const dbName = "GeekAttendanceDB";
+const dbName = "GeekAttendanceDB"; // Updated database name
 let db;
 
 async function connectToMongoDB() {
@@ -32,15 +32,39 @@ const app = new App({
 
 let attendanceRecord = {};
 
+// Helper function to generate message text in the required format
+const generateMessageText = (attendanceRecord, currentDate) => {
+  const month = currentDate.month;
+  const week =
+    currentDate.weekNumber - currentDate.startOf("month").weekNumber + 1;
+  const day = currentDate.setLocale("ko").toFormat("cccc");
+
+  let messageText = `${month}월 ${week}주차 ${day} 인증 기록\n`;
+
+  const participants = Object.keys(attendanceRecord);
+  participants.forEach((userName) => {
+    messageText += `${userName} : ${attendanceRecord[userName].join("")}\n`;
+  });
+
+  return messageText;
+};
+
+// Save attendance record to DB
 async function saveAttendanceRecordToDB(week) {
-  const collection = db.collection("GeekAttendanceRecords");
-  await collection.updateOne(
-    { week: week },
-    { $set: { records: attendanceRecord[week] } },
-    { upsert: true }
-  );
+  try {
+    const collection = db.collection("GeekAttendanceRecords");
+    await collection.updateOne(
+      { week: week },
+      { $set: { records: attendanceRecord[week] } },
+      { upsert: true }
+    );
+    console.log(`Attendance record for ${week} saved successfully.`);
+  } catch (error) {
+    console.error("Error saving attendance record to DB:", error);
+  }
 }
 
+// Load attendance record from DB
 async function loadAttendanceRecordFromDB(week) {
   const collection = db.collection("GeekAttendanceRecords");
   const record = await collection.findOne({ week: week });
@@ -49,11 +73,14 @@ async function loadAttendanceRecordFromDB(week) {
     attendanceRecord[week] = record.records;
     console.log(`Attendance record for ${week} loaded successfully.`);
   } else {
-    attendanceRecord[week] = null;
-    console.log(`No attendance record found for ${week}.`);
+    attendanceRecord[week] = {};
+    console.log(
+      `No attendance record found for ${week}. Initializing empty attendance.`
+    );
   }
 }
 
+// Save message timestamp to DB
 async function saveMessageTsToDB(week, ts) {
   const collection = db.collection("GeekMessageTimestamps");
   await collection.updateOne(
@@ -63,14 +90,16 @@ async function saveMessageTsToDB(week, ts) {
   );
 }
 
+// Load message timestamp from DB
 async function loadMessageTsFromDB(week) {
   const collection = db.collection("GeekMessageTimestamps");
   const record = await collection.findOne({ week: week });
   return record ? record.ts : null;
 }
 
+// Initialize the attendance record for the current week
 async function initializeWeekRecord(channelId, botUserId) {
-  const currentDate = DateTime.local();
+  const currentDate = DateTime.local().setZone("Asia/Seoul");
   const currentWeek = `Week ${currentDate.weekNumber}`;
   attendanceRecord[currentWeek] = {};
 
@@ -105,68 +134,63 @@ async function initializeWeekRecord(channelId, botUserId) {
   }
 }
 
+// Start the daily challenge
 async function startDailyChallenge() {
   const currentDate = DateTime.local().setZone("Asia/Seoul");
   const currentWeek = `Week ${currentDate.weekNumber}`;
 
-  // 출석 기록 불러오기
+  // Load attendance record
   await loadAttendanceRecordFromDB(currentWeek);
 
-  // 출석 기록이 없을 경우 초기화
-  if (!attendanceRecord[currentWeek]) {
+  // Initialize if no record exists
+  if (
+    !attendanceRecord[currentWeek] ||
+    Object.keys(attendanceRecord[currentWeek]).length === 0
+  ) {
     console.log("No existing attendance record found. Initializing a new one.");
-    const channelId = "C07JKNRSK7H"; // 사용하고자 하는 Slack 채널 ID
-    const botUserId = "U07KLRELP19"; // 봇 사용자 ID
-    await initializeWeekRecord(channelId, botUserId); // 주차 기록 초기화
+    const channelId = "C07JKNRSK7H"; // Slack channel ID
+    const botUserId = "U07KLRELP19"; // Bot user ID
+    await initializeWeekRecord(channelId, botUserId);
   }
 
-  // 초기화 후에도 출석 기록이 없으면 에러 처리
-  if (!attendanceRecord[currentWeek]) {
+  if (
+    !attendanceRecord[currentWeek] ||
+    Object.keys(attendanceRecord[currentWeek]).length === 0
+  ) {
     console.error("Failed to initialize attendance record.");
     return;
   }
 
-  const month = currentDate.month;
-  const week =
-    currentDate.weekNumber - currentDate.startOf("month").weekNumber + 1;
-  const day = currentDate.setLocale("ko").toFormat("cccc");
+  // Generate the message using the generateMessageText function
+  const messageText = generateMessageText(
+    attendanceRecord[currentWeek],
+    currentDate
+  );
 
-  // 메시지 텍스트 구성
-  let messageText = `${month}월 ${week}주차 ${day} 인증 기록\n`;
-
-  const participants = Object.keys(attendanceRecord[currentWeek]);
-
-  participants.forEach((userName) => {
-    messageText += `${userName} : ${attendanceRecord[currentWeek][
-      userName
-    ].join("")}\n`;
-  });
-
-  // Slack에 메시지 전송
+  // Post the message to Slack
   const result = await app.client.chat.postMessage({
-    channel: "C07JKNRSK7H", // 변경된 채널 ID
+    channel: "C07JKNRSK7H", // Slack channel ID
     text: messageText,
   });
 
-  // 메시지 타임스탬프 저장
   const messageTs = result.ts;
   await saveMessageTsToDB(currentWeek, messageTs);
 }
 
-// Scheduled Task
+// Schedule task to start challenge
 cron.schedule("1 15 * * *", async () => {
   const currentDate = DateTime.local().setZone("Asia/Seoul");
 
   if (currentDate.weekday === 1) {
-    const channelId = "C07JKNRSK7H"; // 사용하고자 하는 Slack 채널 ID
-    const botUserId = "U07KLRELP19"; // 봇 사용자 ID
+    const channelId = "C07JKNRSK7H";
+    const botUserId = "U07KLRELP19";
     await initializeWeekRecord(channelId, botUserId);
   } else {
     await startDailyChallenge();
   }
 });
 
-// 앱 멘션 이벤트 핸들러 통합
+// Event handler for app mentions
 app.event("app_mention", async ({ event, say, client }) => {
   try {
     const currentDate = DateTime.local().setZone("Asia/Seoul");
@@ -177,17 +201,15 @@ app.event("app_mention", async ({ event, say, client }) => {
     const currentWeek = `Week ${currentDate.weekNumber}`;
     let messageTs = await loadMessageTsFromDB(currentWeek);
 
-    // 챌린지 메시지의 타임스탬프가 없을 경우 새로운 메시지를 생성
+    // Generate new message if none exists
     if (!messageTs) {
       await say("챌린지 메시지가 없습니다. 새로운 메시지를 게시합니다.");
-
-      // 새로운 메시지 생성 및 타임스탬프 저장
-      const result = await startDailyChallenge(); // 새 메시지를 생성하고 ts 반환
+      const result = await startDailyChallenge();
       messageTs = result.ts;
       await saveMessageTsToDB(currentWeek, messageTs);
     }
 
-    // 인증이 마감되었는지 확인
+    // Check if challenge is expired
     if (
       currentDate.day > eventDate.day ||
       (currentDate.hour >= 0 && currentDate.hour < 1)
@@ -199,11 +221,9 @@ app.event("app_mention", async ({ event, say, client }) => {
       return;
     }
 
-    // 메시지에 링크가 있는지 확인
+    // Check for link in the message
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const hasLink = urlRegex.test(event.text);
-
-    if (!hasLink) {
+    if (!urlRegex.test(event.text)) {
       await say({
         text: "인증이 실패했습니다. 쓰레드 링크를 포함해야 합니다.",
         thread_ts: event.ts,
@@ -217,7 +237,6 @@ app.event("app_mention", async ({ event, say, client }) => {
 
     await loadAttendanceRecordFromDB(currentWeek);
 
-    // 챌린지가 시작되지 않았을 경우 처리
     if (!attendanceRecord[currentWeek]) {
       await say({
         text: "챌린지가 아직 시작되지 않았습니다. '챌린지 시작'을 입력하세요.",
@@ -228,7 +247,6 @@ app.event("app_mention", async ({ event, say, client }) => {
 
     const participants = Object.keys(attendanceRecord[currentWeek]);
 
-    // 참가자 이름 확인
     if (!participants.includes(userName)) {
       await say({
         text: "참가자 이름을 확인해 주세요.",
@@ -238,41 +256,20 @@ app.event("app_mention", async ({ event, say, client }) => {
     }
 
     const today = currentDate.weekday - 1;
-    const week =
-      currentDate.weekNumber - currentDate.startOf("month").weekNumber + 1;
-
     attendanceRecord[currentWeek][userName][today] =
       currentDate.weekday === 6 || currentDate.weekday === 7 ? "❇️" : "✅";
 
-    // 메시지 업데이트
-    let messageText = `${currentDate.month}월 ${week}주차 인증 기록\n`;
-    participants.forEach((name) => {
-      messageText += `${name} : ${attendanceRecord[currentWeek][name].join(
-        ""
-      )}\n`;
+    // Update the message using the generateMessageText function
+    const updatedMessage = generateMessageText(
+      attendanceRecord[currentWeek],
+      currentDate
+    );
+
+    await client.chat.update({
+      channel: event.channel,
+      ts: messageTs,
+      text: updatedMessage,
     });
-
-    try {
-      await client.chat.update({
-        channel: event.channel,
-        ts: messageTs,
-        text: messageText,
-      });
-    } catch (error) {
-      if (error.data && error.data.error === "message_not_found") {
-        const result = await startDailyChallenge();
-        messageTs = result.ts;
-        await saveMessageTsToDB(currentWeek, messageTs);
-
-        await client.chat.update({
-          channel: event.channel,
-          ts: messageTs,
-          text: messageText,
-        });
-      } else {
-        throw error;
-      }
-    }
 
     await client.reactions.add({
       channel: event.channel,
@@ -282,14 +279,14 @@ app.event("app_mention", async ({ event, say, client }) => {
 
     await saveAttendanceRecordToDB(currentWeek);
   } catch (error) {
-    console.error("Error during the app_mention event:", error);
+    console.error("Error during app_mention event:", error);
     await say("챌린지 메시지를 업데이트하는 중 오류가 발생했습니다.");
   }
 });
 
+// Command to start the challenge
 app.command("/챌린지시작", async ({ command, ack, say }) => {
   await ack();
-
   try {
     console.log("/챌린지시작 명령어가 트리거되었습니다.");
     await startDailyChallenge();
@@ -299,13 +296,13 @@ app.command("/챌린지시작", async ({ command, ack, say }) => {
   }
 });
 
+// Command to delete the challenge
 app.command("/챌린지삭제", async ({ command, ack, say }) => {
   await ack();
   const currentDate = DateTime.local().setZone("Asia/Seoul");
   const currentWeek = `Week ${currentDate.weekNumber}`;
   const collection = db.collection("GeekAttendanceRecords");
 
-  console.log("/챌린지삭제 명령어가 트리거되었습니다.");
   try {
     const result = await collection.deleteOne({ week: currentWeek });
     if (result.deletedCount > 0) {
